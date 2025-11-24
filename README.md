@@ -211,4 +211,4 @@ MIT - Use for any purpose.
 
 ---
 
-**Deploy to your home server with Docker. Get Slack notifications. Done.**
+**Deploy to your server with Docker. Get Slack notifications. Done.**
