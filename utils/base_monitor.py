@@ -103,43 +103,43 @@ class ClaudeDecisionEngine:
         Returns: {"should_respond": bool, "reason": str, "sentiment": str, "engagement_score": int}
         """
 
-        prompt = f"""You are analyzing a social media post about the hemp industry to decide if an advocacy account (@{self.bot_username}) should reply OR reshare.
+        prompt = f"""You are analyzing a social media post to decide if an engagement account (@{self.bot_username}) should reply OR reshare.
 
 POST CONTENT:
 Author: @{post_data['author_handle']} ({post_data['author_followers']} followers)
 Text: {post_data['text']}
 Likes: {post_data.get('likes', 0)} | Shares: {post_data.get('shares', 0)}
 
-MISSION: We're mobilizing people to contact representatives about protecting the hemp industry from an unfair ban.
+MISSION: Engage with relevant posts based on configured keywords and sentiment.
 
 ACTIONS TO CONSIDER:
-1. REPLY - Engage with the author, ask them to take action
-2. RESHARE - Amplify good content (news, advocacy, people sharing {self.website_url})
+1. REPLY - Engage with the author
+2. RESHARE - Amplify good content (news, educational content, people sharing {self.website_url})
 3. IGNORE - Skip this post
 
 REPLY when:
-- Author is AGAINST the ban (angry, frustrated, worried)
-- Real person expressing genuine concern (not spam, not bot)
-- Would likely take action if asked
-- NOT already mobilized/taking action
+- Author expresses genuine interest or concern about the topic
+- Real person (not spam, not bot)
+- Would benefit from engagement
+- NOT already highly engaged with similar content
 
 RESHARE when:
-- Positive hemp industry news
-- People already sharing {self.website_url} or similar advocacy
-- Quality educational content about hemp
-- Influential voices speaking out against the ban
-- Good statistics/facts that support the cause
+- Positive news related to your topics
+- People already sharing {self.website_url} or similar resources
+- Quality educational content
+- Influential voices discussing the topic
+- Good statistics/facts that support engagement
 
 IGNORE when:
-- Pro-ban sentiments
+- Opposing viewpoints (unless constructive)
 - Trolls or inflammatory posts
-- Other advocacy bots (unless they're sharing your site)
+- Other bots (unless they're sharing valuable content)
 - Spam or low-quality content
 
 Respond with a JSON object:
 {{
   "action": "reply" or "reshare" or "ignore",
-  "sentiment": "against_ban" or "pro_ban" or "neutral" or "unclear" or "news" or "advocacy",
+  "sentiment": "positive" or "negative" or "neutral" or "unclear" or "news" or "advocacy",
   "reason": "brief explanation",
   "engagement_score": 1-10
 }}
@@ -187,28 +187,28 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON."""
         Generates a personalized reply for the post
         """
 
-        prompt = f"""You are @{self.bot_username}, a grassroots advocacy account helping people protect the hemp industry.
+        prompt = f"""You are @{self.bot_username}, a social engagement account.
 
 THEIR POST:
 @{post_data['author_handle']}: {post_data['text']}
 
 TASK: Write a SHORT, authentic reply (max {max_chars} chars) that:
-1. Acknowledges their concern empathetically
-2. Empowers them to take action
-3. Includes this link: {self.website_url}
+1. Acknowledges their post empathetically
+2. Provides value or encouragement
+3. Optionally includes relevant link: {self.website_url}
 
 TONE:
 - Friendly, not corporate
-- Urgent but hopeful
+- Genuine and conversational
 - Person-to-person, not brand-to-consumer
 - Minimal hashtags/emojis unless they used them
 
 EXAMPLES:
-"I hear you. The good news? You can actually do something about it. Takes 60 seconds to contact your rep: {self.website_url}"
+"I hear you. Here's a resource that might help: {self.website_url}"
 
-"Same here. That's why I built this tool - makes it super easy to email your representatives: {self.website_url}"
+"Great point! You might find this useful: {self.website_url}"
 
-"You're right to be worried. Here's how you can help fight this: {self.website_url}"
+"Thanks for sharing. This could be helpful: {self.website_url}"
 
 Write ONLY the reply text, nothing else."""
 
@@ -232,7 +232,7 @@ Write ONLY the reply text, nothing else."""
         except Exception as e:
             self.logger.error(f"Claude generation error: {e}")
             # Fallback generic message
-            return f"You can help fight this ban. Contact your rep in 60 seconds: {self.website_url}"
+            return f"Thanks for sharing! Check out: {self.website_url}"
 
 
 class BaseMonitor(ABC):
@@ -247,8 +247,8 @@ class BaseMonitor(ABC):
         self.db = Database()
         self.claude = ClaudeDecisionEngine(
             api_key=config['anthropic_api_key'],
-            bot_username=config.get('bot_username', 'StandForHemp'),
-            website_url=config.get('website_url', 'https://standforhemp.com'),
+            bot_username=config.get('bot_username', 'BlueSkyBot'),
+            website_url=config.get('website_url', 'https://example.com'),
             model=config.get('claude_model')
         )
         self.rate_limiter = RateLimiter(

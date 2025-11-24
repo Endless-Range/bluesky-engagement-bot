@@ -78,8 +78,6 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/...
 - More reliable uptime
 - Public IP if needed
 
-Either works great!
-
 ## How It Works
 
 ```
@@ -106,23 +104,45 @@ Bot posts + saves to database
 
 ## Customization
 
-### Change Keywords
+The bot's behavior is controlled in two places:
 
-Edit your `.env` file:
+### 1. Keywords (Easy) - Edit `.env` file
+
+Set which topics to monitor:
 ```bash
-KEYWORDS=keyword1,keyword2,keyword3,your keywords here
+KEYWORDS=climate change,sustainability,solar energy
 ```
 
-Keywords are comma-separated. The bot will monitor Bluesky for posts containing any of these terms.
+Keywords are comma-separated. The bot searches Bluesky for posts containing any of these terms.
 
-### Change Claude's Logic
+### 2. AI Behavior (Advanced) - Edit [utils/base_monitor.py](utils/base_monitor.py)
 
-Edit `utils/base_monitor.py` line 104:
+**Decision Logic (lines 106-147)** - When should the bot reply, reshare, or ignore?
 ```python
+REPLY when:
+- Author expresses genuine interest or concern about the topic
+- Real person (not spam, not bot)
+- Add your specific criteria here
+
 RESHARE when:
-- Positive industry news
+- Positive news related to your topics
+- Quality educational content
 - Add your criteria here
 ```
+
+**Reply Generation (lines 190-213)** - What should the bot say?
+```python
+TASK: Write a SHORT, authentic reply that:
+1. Acknowledges their post empathetically
+2. Provides value or encouragement
+3. Optionally includes relevant link
+
+EXAMPLES:
+"I hear you. Here's a resource that might help: {url}"
+"Great point! This might be useful: {url}"
+```
+
+Customize these prompts for your use case (advocacy, education, community building, customer support, etc.)
 
 ## Command-Line Options
 
