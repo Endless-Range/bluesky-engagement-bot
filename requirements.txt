@@ -1,0 +1,8 @@
+# Core dependencies for Bluesky engagement agent
+anthropic==0.39.0
+python-dotenv==1.0.0
+atproto==0.0.55
+requests==2.32.3
+flask==3.0.0
+
+

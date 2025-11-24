@@ -1,0 +1,30 @@
+
+services:
+  bluesky-bot:
+    build: .
+    container_name: bluesky-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist database and logs
+      - ./data:/app/data
+      - ./logs:/app/logs
+    # All settings now in .env file
+    # Uncomment for debugging
+    # command: python3 bluesky_monitor_v2.py --manual --log-level DEBUG
+
+  slack-approval-server:
+    build: .
+    container_name: bluesky-slack-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Share database and logs with bot
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "${SLACK_SERVER_PORT:-3000}:${SLACK_SERVER_PORT:-3000}"
+    # All settings now in .env file
+    command: python3 slack_approval_server.py
