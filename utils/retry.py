@@ -6,9 +6,10 @@ import time
 import random
 from typing import Callable, Type, Tuple
 from functools import wraps
-import logging
 
-logger = logging.getLogger(__name__)
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class RetryException(Exception):
