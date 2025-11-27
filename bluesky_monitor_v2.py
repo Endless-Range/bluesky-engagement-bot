@@ -4,7 +4,6 @@ Improved with logging, persistence, better error handling
 """
 
 import argparse
-import os
 import sys
 import time
 from datetime import datetime
@@ -143,7 +142,7 @@ class BlueskyMonitor(BaseMonitor):
             logger.debug(f"Posting reply to {post_uri}: {reply_text}")
 
             # Extract URL from reply text to make it clickable
-            website_url = os.getenv('WEBSITE_URL', 'https://example.com')
+            website_url = self.config.get('website_url', 'https://example.com')
 
             # Build rich text with clickable link
             if website_url in reply_text:
