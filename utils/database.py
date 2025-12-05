@@ -4,6 +4,7 @@ SQLite database for persistent storage of seen posts and rate limiting data
 
 import sqlite3
 import json
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -103,6 +104,29 @@ class Database:
                 ON pending_approvals(status, created_at)
             ''')
 
+            # Content fingerprints table for duplicate detection
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS content_fingerprints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    post_id TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    text_hash TEXT,
+                    og_image_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(post_id, platform)
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_fingerprints_text_hash
+                ON content_fingerprints(text_hash, created_at)
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_fingerprints_og_image
+                ON content_fingerprints(og_image_url, created_at)
+            ''')
+
     def has_seen_post(self, post_id: str, platform: str) -> bool:
         """Check if we've already seen this post"""
         with self.get_connection() as conn:
@@ -183,6 +207,13 @@ class Database:
             cursor.execute(
                 'DELETE FROM rate_limits WHERE reply_time < ?',
                 (cutoff,)
+            )
+
+            # Also clean up old fingerprints (use 5 days for fingerprints)
+            fingerprint_cutoff = datetime.now() - timedelta(days=5)
+            cursor.execute(
+                'DELETE FROM content_fingerprints WHERE created_at < ?',
+                (fingerprint_cutoff,)
             )
 
             deleted = cursor.rowcount
@@ -310,3 +341,97 @@ class Database:
                     'created_at': row['created_at']
                 })
             return results
+
+    # === Content Fingerprinting Methods ===
+
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for comparison - lowercase, strip whitespace, remove URLs"""
+        import re
+        if not text:
+            return ""
+        # Lowercase and strip
+        text = text.lower().strip()
+        # Remove URLs (they vary even for same article)
+        text = re.sub(r'https?://\S+', '', text)
+        # Remove @mentions (people may tag different accounts)
+        text = re.sub(r'@\S+', '', text)
+        # Remove hashtags
+        text = re.sub(r'#\S+', '', text)
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def _hash_text(self, text: str) -> str:
+        """Create a hash of normalized text"""
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return None
+        return hashlib.md5(normalized.encode()).hexdigest()
+
+    def save_content_fingerprint(self, post_id: str, platform: str, text: str, og_image_url: str = None):
+        """Save content fingerprint for duplicate detection"""
+        text_hash = self._hash_text(text)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO content_fingerprints
+                (post_id, platform, text_hash, og_image_url, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (post_id, platform, text_hash, og_image_url))
+
+    def is_duplicate_content(self, text: str, og_image_url: str = None, days: int = 5) -> Optional[dict]:
+        """
+        Check if content is a duplicate based on text hash or OG image URL.
+        Returns info about the duplicate if found, None otherwise.
+        """
+        text_hash = self._hash_text(text)
+        cutoff = datetime.now() - timedelta(days=days)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Check for matching text hash
+            if text_hash:
+                cursor.execute('''
+                    SELECT post_id, platform, created_at FROM content_fingerprints
+                    WHERE text_hash = ? AND created_at > ?
+                    LIMIT 1
+                ''', (text_hash, cutoff))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'duplicate_type': 'text',
+                        'original_post_id': row['post_id'],
+                        'platform': row['platform'],
+                        'found_at': row['created_at']
+                    }
+
+            # Check for matching OG image URL
+            if og_image_url:
+                cursor.execute('''
+                    SELECT post_id, platform, created_at FROM content_fingerprints
+                    WHERE og_image_url = ? AND created_at > ?
+                    LIMIT 1
+                ''', (og_image_url, cutoff))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'duplicate_type': 'og_image',
+                        'original_post_id': row['post_id'],
+                        'platform': row['platform'],
+                        'found_at': row['created_at']
+                    }
+
+        return None
+
+    def cleanup_old_fingerprints(self, days: int = 5):
+        """Remove fingerprints older than specified days"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cutoff = datetime.now() - timedelta(days=days)
+            cursor.execute(
+                'DELETE FROM content_fingerprints WHERE created_at < ?',
+                (cutoff,)
+            )
+            return cursor.rowcount

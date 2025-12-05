@@ -79,6 +79,12 @@ class BlueskyMonitor(BaseMonitor):
                     author = post.author
                     record = post.record
 
+                    # Skip posts that are replies (only engage with root/top-level posts)
+                    # This prevents butting into existing conversations
+                    if hasattr(record, 'reply') and record.reply:
+                        logger.debug(f"Skipping reply post from @{author.handle}")
+                        continue
+
                     # Check post age
                     created_at = datetime.fromisoformat(record.created_at.replace('Z', '+00:00'))
                     post_age = datetime.now(created_at.tzinfo) - created_at
@@ -88,13 +94,15 @@ class BlueskyMonitor(BaseMonitor):
                         logger.debug(f"Post too old: {post_age}")
                         continue
 
-                    # Check follower count (safely handle missing attribute)
+                    # Check follower count - need to fetch full profile since search results
+                    # don't include followers_count
                     min_followers = self.config.get('min_followers_to_reply', 5)
-                    follower_count = getattr(author, 'followers_count', None)
-
-                    # If follower count not available, assume it's okay (or set to 0)
-                    if follower_count is None:
-                        follower_count = 0  # Skip filter if data not available
+                    try:
+                        profile = self.client.app.bsky.actor.get_profile({'actor': author.handle})
+                        follower_count = getattr(profile, 'followers_count', 0) or 0
+                    except Exception as e:
+                        logger.debug(f"Could not fetch profile for @{author.handle}: {e}")
+                        follower_count = 0  # Skip filter if profile fetch fails
 
                     if follower_count > 0 and follower_count < min_followers:
                         logger.debug(
@@ -102,6 +110,20 @@ class BlueskyMonitor(BaseMonitor):
                             f"({follower_count})"
                         )
                         continue
+
+                    # Extract OG image URL from embed if present (for duplicate detection)
+                    og_image_url = None
+                    if hasattr(post, 'embed') and post.embed:
+                        embed = post.embed
+                        # Check for external embed (link cards)
+                        if hasattr(embed, 'external') and embed.external:
+                            if hasattr(embed.external, 'thumb') and embed.external.thumb:
+                                og_image_url = embed.external.thumb
+                        # Check for record with media embed (quote posts with links)
+                        elif hasattr(embed, 'media') and embed.media:
+                            if hasattr(embed.media, 'external') and embed.media.external:
+                                if hasattr(embed.media.external, 'thumb'):
+                                    og_image_url = embed.media.external.thumb
 
                     results.append({
                         'id': post_uri,  # Use URI as ID
@@ -113,7 +135,8 @@ class BlueskyMonitor(BaseMonitor):
                         'author_followers': follower_count,
                         'likes': post.like_count or 0,
                         'shares': post.repost_count or 0,
-                        'created_at': created_at.isoformat()  # Convert datetime to string for JSON
+                        'created_at': created_at.isoformat(),  # Convert datetime to string for JSON
+                        'og_image_url': og_image_url  # OG image for duplicate detection
                     })
 
                 # Small delay between keyword searches
